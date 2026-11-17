@@ -1,114 +1,406 @@
 <ResourceDictionary
     x:Class="OatAutoPA.Options"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:behavior="clr-namespace:NINA.WPF.Base.Behaviors;assembly=NINA.WPF.Base"
+    xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+    xmlns:ninactrl="clr-namespace:NINA.CustomControlLibrary;assembly=NINA.CustomControlLibrary"
+    xmlns:s="clr-namespace:System;assembly=mscorlib">
+    <!--
+        Layout and styling follow TPPA's options page: plain TextBlock / TextBox / CheckBox / ComboBox pick up
+        N.I.N.A.'s implicit theme styles, so do NOT add implicit styles here (they would replace the theme).
+        Keep Grid.Row numbers in order when adding rows.
+    -->
+    <s:String x:Key="EnabledToolTip">Announce this controller on the N.I.N.A. message broker so TPPA lists it as 'External: OAT AutoPA'. Turning it off removes it from TPPA's list at once.</s:String>
+    <s:String x:Key="GainToolTip">Fraction of the measured polar error corrected per step. Below 1 avoids overshooting; 0.8 is a good start.</s:String>
+    <s:String x:Key="MaxMoveArcMinToolTip">Largest single AZ or ALT move per step. Larger corrections are split over several steps.</s:String>
+    <s:String x:Key="ManualAdjustLimitArcMinToolTip">If either axis error is larger than this, the plugin stops the run and asks for a manual adjustment instead of moving.</s:String>
+    <s:String x:Key="SettleSecondsToolTip">Time TPPA waits after a move before it takes the next exposure, so the mount can settle.</s:String>
+    <s:String x:Key="MoveTimeoutSecondsToolTip">The run is stopped with a fault if the AZ/ALT motors are still running after this long.</s:String>
+    <s:String x:Key="InvertAzimuthToolTip">Reverse the azimuth correction direction for a mount that moves the other way.</s:String>
+    <s:String x:Key="InvertAltitudeToolTip">Reverse the altitude correction direction for a mount that moves the other way. The hemisphere is handled automatically.</s:String>
+    <s:String x:Key="AutoDetectDirectionToolTip">If a move clearly makes the error worse before anything is learned, flip that axis and save the change to the invert setting.</s:String>
+    <s:String x:Key="UseLearnedResponseToolTip">Scale moves by the learned gear response (measured error change per commanded arcminute) once it repeats.</s:String>
+    <s:String x:Key="BacklashStrategyToolTip">Preload: negative moves overshoot by the preload and come back, so the gears always finish turning positive. Learned: backlash is measured on reversals and added to reversal moves.</s:String>
+    <s:String x:Key="PreloadAzimuthArcMinToolTip">Overshoot used by the Preload strategy on azimuth. Must be at least as large as the real backlash.</s:String>
+    <s:String x:Key="PreloadAltitudeArcMinToolTip">Overshoot used by the Preload strategy on altitude. Must be at least as large as the real backlash.</s:String>
+    <s:String x:Key="UseBacklashCompensationToolTip">Learned strategy only: add the learned backlash to moves that reverse direction.</s:String>
+    <s:String x:Key="PersistCalibrationToolTip">Save trusted calibration values to the N.I.N.A. profile and start from them next session.</s:String>
+    <s:String x:Key="MaxResponseScatterToolTip">Largest relative scatter of the response samples that is still trusted. Above it the axis is treated as slipping and learned values are not applied.</s:String>
+    <s:String x:Key="MinLearningMoveArcMinToolTip">Moves smaller than this are not used for learning, because measurement noise would dominate.</s:String>
+    <s:String x:Key="StatusToolTip">What the controller is doing right now.</s:String>
+    <s:String x:Key="CalibrationToolTip">What has been learned so far for each axis.</s:String>
+    <s:String x:Key="ResetCalibrationToolTip">Forget the learned gear response and backlash for both axes, including the copy saved in the profile.</s:String>
+
     <!--  Key must be "<AssemblyTitle>_Options"; the data context is the OatAutoPAPlugin instance.  -->
     <DataTemplate x:Key="OAT AutoPA_Options">
-        <StackPanel Orientation="Vertical">
-            <StackPanel.Resources>
-                <Style TargetType="TextBlock">
-                    <Setter Property="VerticalAlignment" Value="Center" />
-                    <Setter Property="MinWidth" Value="260" />
-                    <Setter Property="Margin" Value="0,2,8,2" />
-                </Style>
-                <Style TargetType="TextBox">
-                    <Setter Property="MinWidth" Value="80" />
-                    <Setter Property="Margin" Value="0,2" />
-                </Style>
-                <Style TargetType="CheckBox">
-                    <Setter Property="Margin" Value="0,2" />
-                    <Setter Property="VerticalAlignment" Value="Center" />
-                </Style>
-            </StackPanel.Resources>
-
-            <TextBlock TextWrapping="Wrap" MaxWidth="700" Margin="0,0,0,8"
-                       Text="In TPPA, set 'Polar Alignment System' to 'External: OAT AutoPA', set a non-zero alignment tolerance, leave 'Do automated adjustments' off, and run TPPA as a sequence instruction." />
-
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Status" />
-                <TextBlock Text="{Binding ControllerStatus}" MinWidth="0" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Learned calibration" />
-                <TextBlock Text="{Binding CalibrationSummary}" MinWidth="0" TextWrapping="Wrap" MaxWidth="500" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                <TextBlock Text="" />
-                <Button Command="{Binding ResetCalibrationCommand}" Content="Reset learned calibration" Padding="8,2" />
-            </StackPanel>
-
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Offer this controller to TPPA" />
-                <CheckBox IsChecked="{Binding Enabled}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Correction gain (fraction of error per step)" />
-                <TextBox Text="{Binding Gain}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Maximum move per step (arcmin)" />
-                <TextBox Text="{Binding MaxMoveArcMin}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Manual adjustment above (arcmin)" />
-                <TextBox Text="{Binding ManualAdjustLimitArcMin}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Settle time after a move (s)" />
-                <TextBox Text="{Binding SettleSeconds}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Move timeout (s)" />
-                <TextBox Text="{Binding MoveTimeoutSeconds}" />
-            </StackPanel>
-
-            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                <TextBlock Text="Invert azimuth" />
-                <CheckBox IsChecked="{Binding InvertAzimuth}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Invert altitude" />
-                <CheckBox IsChecked="{Binding InvertAltitude}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Detect reversed axes automatically" />
-                <CheckBox IsChecked="{Binding AutoDetectDirection}" />
-            </StackPanel>
-
-            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                <TextBlock Text="Correct moves with the learned gear response" />
-                <CheckBox IsChecked="{Binding UseLearnedResponse}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                <TextBlock Text="Backlash strategy" />
-                <ComboBox MinWidth="120" ItemsSource="{Binding BacklashStrategies}" SelectedItem="{Binding BacklashStrategy}" />
-            </StackPanel>
-            <TextBlock TextWrapping="Wrap" MaxWidth="700" Margin="0,0,0,4" Opacity="0.7"
-                       Text="Preload: negative moves overshoot and come back, so the gears always finish turning positive. Set the preload at least as large as the real backlash. Learned: backlash is measured on reversals and added to them." />
-            <StackPanel Orientation="Horizontal" IsEnabled="{Binding IsPreload}">
-                <TextBlock Text="Azimuth preload (arcmin)" />
-                <TextBox Text="{Binding PreloadAzimuthArcMin}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" IsEnabled="{Binding IsPreload}">
-                <TextBlock Text="Altitude preload (arcmin)" />
-                <TextBox Text="{Binding PreloadAltitudeArcMin}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" IsEnabled="{Binding IsLearned}">
-                <TextBlock Text="Compensate learned backlash on reversals" />
-                <CheckBox IsChecked="{Binding UseBacklashCompensation}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Remember calibration between sessions" />
-                <CheckBox IsChecked="{Binding PersistCalibration}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Max response scatter before distrusting (0-1)" />
-                <TextBox Text="{Binding MaxResponseScatter}" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Smallest move used for learning (arcmin)" />
-                <TextBox Text="{Binding MinLearningMoveArcMin}" />
-            </StackPanel>
-        </StackPanel>
+        <TabControl>
+            <i:Interaction.Behaviors>
+                <behavior:BubbleScrollEvent />
+            </i:Interaction.Behaviors>
+            <TabItem Header="Settings">
+                <StackPanel Margin="0,5,0,0" Orientation="Vertical">
+                    <Grid Margin="0,5,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            Grid.ColumnSpan="2"
+                            Margin="0,0,0,10"
+                            Opacity="0.7"
+                            TextWrapping="Wrap"
+                            Text="In TPPA, set 'Polar Alignment System' to 'External: OAT AutoPA', set a non-zero alignment tolerance, leave 'Do automated adjustments' off, and run TPPA as a sequence instruction." />
+                        <TextBlock
+                            Grid.Row="1"
+                            VerticalAlignment="Center"
+                            Text="Status"
+                            ToolTip="{StaticResource StatusToolTip}" />
+                        <TextBlock
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            Margin="5,0,0,0"
+                            VerticalAlignment="Center"
+                            Text="{Binding ControllerStatus}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Grid.Row="2"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Top"
+                            Text="Learned calibration"
+                            ToolTip="{StaticResource CalibrationToolTip}" />
+                        <TextBlock
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            Margin="5,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="{Binding CalibrationSummary}"
+                            TextWrapping="Wrap" />
+                    </Grid>
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            Grid.Row="0"
+                            Margin="0"
+                            VerticalAlignment="Center"
+                            Text="Offer this controller to TPPA"
+                            ToolTip="{StaticResource EnabledToolTip}" />
+                        <CheckBox
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding Enabled}"
+                            ToolTip="{StaticResource EnabledToolTip}" />
+                        <TextBlock
+                            Grid.Row="1"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Correction gain"
+                            ToolTip="{StaticResource GainToolTip}" />
+                        <TextBox
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Text="{Binding Gain, StringFormat={}{0:0.##}}"
+                            ToolTip="{StaticResource GainToolTip}" />
+                        <TextBlock
+                            Grid.Row="2"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Maximum move per step"
+                            ToolTip="{StaticResource MaxMoveArcMinToolTip}" />
+                        <ninactrl:UnitTextBox
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Text="{Binding MaxMoveArcMin, StringFormat={}{0:0.##}}"
+                            ToolTip="{StaticResource MaxMoveArcMinToolTip}"
+                            Unit="arcmin" />
+                        <TextBlock
+                            Grid.Row="3"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Manual adjustment above"
+                            ToolTip="{StaticResource ManualAdjustLimitArcMinToolTip}" />
+                        <ninactrl:UnitTextBox
+                            Grid.Row="3"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Text="{Binding ManualAdjustLimitArcMin, StringFormat={}{0:0.##}}"
+                            ToolTip="{StaticResource ManualAdjustLimitArcMinToolTip}"
+                            Unit="arcmin" />
+                        <TextBlock
+                            Grid.Row="4"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Settle time after a move"
+                            ToolTip="{StaticResource SettleSecondsToolTip}" />
+                        <ninactrl:UnitTextBox
+                            Grid.Row="4"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Text="{Binding SettleSeconds, StringFormat={}{0:0.##}}"
+                            ToolTip="{StaticResource SettleSecondsToolTip}"
+                            Unit="s" />
+                        <TextBlock
+                            Grid.Row="5"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Move timeout"
+                            ToolTip="{StaticResource MoveTimeoutSecondsToolTip}" />
+                        <ninactrl:UnitTextBox
+                            Grid.Row="5"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Text="{Binding MoveTimeoutSeconds, StringFormat={}{0:0.##}}"
+                            ToolTip="{StaticResource MoveTimeoutSecondsToolTip}"
+                            Unit="s" />
+                        <TextBlock
+                            Grid.Row="6"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Invert azimuth"
+                            ToolTip="{StaticResource InvertAzimuthToolTip}" />
+                        <CheckBox
+                            Grid.Row="6"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding InvertAzimuth}"
+                            ToolTip="{StaticResource InvertAzimuthToolTip}" />
+                        <TextBlock
+                            Grid.Row="7"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Invert altitude"
+                            ToolTip="{StaticResource InvertAltitudeToolTip}" />
+                        <CheckBox
+                            Grid.Row="7"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding InvertAltitude}"
+                            ToolTip="{StaticResource InvertAltitudeToolTip}" />
+                        <TextBlock
+                            Grid.Row="8"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Detect reversed axes automatically"
+                            ToolTip="{StaticResource AutoDetectDirectionToolTip}" />
+                        <CheckBox
+                            Grid.Row="8"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding AutoDetectDirection}"
+                            ToolTip="{StaticResource AutoDetectDirectionToolTip}" />
+                    </Grid>
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="Calibration">
+                <StackPanel Margin="0,5,0,0" Orientation="Vertical">
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            Grid.Row="0"
+                            Margin="0"
+                            VerticalAlignment="Center"
+                            Text="Correct moves with the learned gear response"
+                            ToolTip="{StaticResource UseLearnedResponseToolTip}" />
+                        <CheckBox
+                            Grid.Row="0"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,0,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding UseLearnedResponse}"
+                            ToolTip="{StaticResource UseLearnedResponseToolTip}" />
+                        <TextBlock
+                            Grid.Row="1"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Backlash strategy"
+                            ToolTip="{StaticResource BacklashStrategyToolTip}" />
+                        <ComboBox
+                            Grid.Row="1"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            ItemsSource="{Binding BacklashStrategies}"
+                            SelectedItem="{Binding BacklashStrategy}"
+                            ToolTip="{StaticResource BacklashStrategyToolTip}" />
+                        <TextBlock
+                            Grid.Row="2"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Azimuth preload"
+                            ToolTip="{StaticResource PreloadAzimuthArcMinToolTip}" />
+                        <ninactrl:UnitTextBox
+                            Grid.Row="2"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            IsEnabled="{Binding IsPreload}"
+                            Text="{Binding PreloadAzimuthArcMin, StringFormat={}{0:0.##}}"
+                            ToolTip="{StaticResource PreloadAzimuthArcMinToolTip}"
+                            Unit="arcmin" />
+                        <TextBlock
+                            Grid.Row="3"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Altitude preload"
+                            ToolTip="{StaticResource PreloadAltitudeArcMinToolTip}" />
+                        <ninactrl:UnitTextBox
+                            Grid.Row="3"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            IsEnabled="{Binding IsPreload}"
+                            Text="{Binding PreloadAltitudeArcMin, StringFormat={}{0:0.##}}"
+                            ToolTip="{StaticResource PreloadAltitudeArcMinToolTip}"
+                            Unit="arcmin" />
+                        <TextBlock
+                            Grid.Row="4"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Compensate learned backlash on reversals"
+                            ToolTip="{StaticResource UseBacklashCompensationToolTip}" />
+                        <CheckBox
+                            Grid.Row="4"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            IsEnabled="{Binding IsLearned}"
+                            IsChecked="{Binding UseBacklashCompensation}"
+                            ToolTip="{StaticResource UseBacklashCompensationToolTip}" />
+                        <TextBlock
+                            Grid.Row="5"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Remember calibration between sessions"
+                            ToolTip="{StaticResource PersistCalibrationToolTip}" />
+                        <CheckBox
+                            Grid.Row="5"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            IsChecked="{Binding PersistCalibration}"
+                            ToolTip="{StaticResource PersistCalibrationToolTip}" />
+                        <TextBlock
+                            Grid.Row="6"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Max response scatter before distrusting"
+                            ToolTip="{StaticResource MaxResponseScatterToolTip}" />
+                        <TextBox
+                            Grid.Row="6"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Text="{Binding MaxResponseScatter, StringFormat={}{0:0.##}}"
+                            ToolTip="{StaticResource MaxResponseScatterToolTip}" />
+                        <TextBlock
+                            Grid.Row="7"
+                            Margin="0,5,0,0"
+                            VerticalAlignment="Center"
+                            Text="Smallest move used for learning"
+                            ToolTip="{StaticResource MinLearningMoveArcMinToolTip}" />
+                        <ninactrl:UnitTextBox
+                            Grid.Row="7"
+                            Grid.Column="1"
+                            MinWidth="80"
+                            Margin="5,5,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Text="{Binding MinLearningMoveArcMin, StringFormat={}{0:0.##}}"
+                            ToolTip="{StaticResource MinLearningMoveArcMinToolTip}"
+                            Unit="arcmin" />
+                        <Button
+                            Grid.Row="8"
+                            Grid.ColumnSpan="2"
+                            Margin="0,20,0,0"
+                            HorizontalAlignment="Left"
+                            Command="{Binding ResetCalibrationCommand}"
+                            ToolTip="{StaticResource ResetCalibrationToolTip}">
+                            <TextBlock
+                                Margin="10,5"
+                                VerticalAlignment="Center"
+                                Foreground="{StaticResource ButtonForegroundBrush}"
+                                Text="Reset Learned Calibration" />
+                        </Button>
+                    </Grid>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
     </DataTemplate>
 </ResourceDictionary>
