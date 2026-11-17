@@ -41,6 +41,50 @@ namespace OatAutoPA.Core {
 
         /// <summary>Stops the AZ/ALT motors and leaves the mount tracking.</summary>
         Task StopAzAltAsync();
+
+        /// <summary>
+        /// Asks the firmware what it is (<c>:GVP#</c>, <c>:GVN#</c>) and reports what driver N.I.N.A. is using.
+        /// Must not throw: a driver that rejects the commands yields an empty product name.
+        /// </summary>
+        Task<MountIdentity> IdentifyAsync(CancellationToken token);
+    }
+
+    /// <summary>What the connected mount says it is.</summary>
+    public sealed class MountIdentity {
+        /// <summary><c>:GVP#</c> reply without the '#': "OpenAstroTracker" or "OpenAstroMount" on OAT firmware.</summary>
+        public string ProductName { get; init; }
+
+        /// <summary><c>:GVN#</c> reply without the '#', e.g. "V1.13.14". Informational.</summary>
+        public string FirmwareVersion { get; init; }
+
+        /// <summary>Driver as N.I.N.A. reports it (name / ASCOM ProgId). Only used in messages.</summary>
+        public string DriverName { get; init; }
+
+        /// <summary>
+        /// True when the firmware answered as OpenAstroTech firmware. This, not the driver name, decides:
+        /// it proves raw Meade commands sent through N.I.N.A. reach OAT firmware, whatever the transport.
+        /// </summary>
+        public bool IsOpenAstro =>
+            !string.IsNullOrWhiteSpace(ProductName)
+            && ProductName.Trim().StartsWith("OpenAstro", StringComparison.OrdinalIgnoreCase);
+
+        public string Describe() {
+            var product = string.IsNullOrWhiteSpace(ProductName) ? "no product name" : $"'{ProductName.Trim()}'";
+            var version = string.IsNullOrWhiteSpace(FirmwareVersion) ? "" : $" {FirmwareVersion.Trim()}";
+            var driver = string.IsNullOrWhiteSpace(DriverName) ? "" : $" via {DriverName.Trim()}";
+            return product + version + driver;
+        }
+
+        /// <summary>Strips the terminator and rejects the OAT driver's "255" error marker and non-printable noise.</summary>
+        public static string CleanReply(string reply) {
+            if (string.IsNullOrWhiteSpace(reply)) { return null; }
+            var text = reply.Trim().TrimEnd('#').Trim();
+            if (text.Length == 0 || text == "255" || text.Length > 64) { return null; }
+            foreach (var c in text) {
+                if (c < 0x20 || c > 0x7E) { return null; }
+            }
+            return text;
+        }
     }
 
     public interface ILog {

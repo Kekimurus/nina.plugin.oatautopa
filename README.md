@@ -26,6 +26,12 @@ It uses TPPA's **external correction bridge** (TPPA 2.2.8.0+, see
 The plugin talks to the firmware only through the ASCOM driver's `CommandBlind`/`CommandString`
 passthrough. No second serial connection is opened.
 
+Before it offers the hardware to TPPA, the plugin asks the firmware for its product name (`:GVP#`) through
+that same passthrough. Only `OpenAstroTracker` or `OpenAstroMount` counts as connected. Any other mount,
+or a driver that rejects the command, is reported to TPPA as not connected, with the reason, so the external
+step never starts on the wrong mount. The check runs at every session start and again after N.I.N.A.
+reconnects the mount. The firmware version (`:GVN#`) and the driver name are logged.
+
 ### Calibration from the sky, during the run
 
 There are no dedicated calibration frames. Each correction doubles as a calibration sample:

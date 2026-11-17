@@ -2,6 +2,7 @@
 
 ## 0.1.0.0 (unreleased)
 
+- Mount identity check: the firmware must answer `:GVP#` as OpenAstroTracker/OpenAstroMount, otherwise TPPA is told the hardware is not connected. Checked at session start and after reconnects.
 - Backlash strategy option: **Preload** (default; overtravel-and-return so the gears always finish turning positive, 5′ per axis) or **Learned** (measured on reversals).
 - First version: external correction controller for TPPA 2.2.8.0+ (bridge interface version 1).
 - AZ/ALT moves through the N.I.N.A. telescope passthrough (`:MAZ`/`:MAL`, motion from `:GX`); TPPA capture is held while the motors run.

@@ -55,6 +55,12 @@ namespace OatAutoPA.Core {
         private bool? reportedConnected;
         private bool? reportedReady;
 
+        // What the connected mount said it is (guarded by gate). Cleared on a new session and whenever
+        // N.I.N.A. reports the mount disconnected, so a different mount connected later is checked again.
+        private MountIdentity identity;
+        private DateTime identityCheckedUtc;
+        private bool identityRejectionReported;
+
         public OatController(IBridgeTransport transport,
                              IOatMount mount,
                              Func<ControllerSettings> settingsSource,
@@ -93,6 +99,11 @@ namespace OatAutoPA.Core {
 
         public string SessionId {
             get { lock (gate) { return sessionId; } }
+        }
+
+        /// <summary>Last identification of the connected mount, or null when not checked yet.</summary>
+        public MountIdentity MountIdentity {
+            get { lock (gate) { return identity; } }
         }
 
         public void Start() {
@@ -312,6 +323,8 @@ namespace OatAutoPA.Core {
             consecutiveUnusable = 0;
             reportedConnected = null;
             reportedReady = null;
+            identity = null; // check again at every session start
+            identityRejectionReported = false;
             log.Info($"[OAT] Joined TPPA session {id}.");
         }
 
@@ -376,6 +389,12 @@ namespace OatAutoPA.Core {
 
             if (!mount.IsConnected) {
                 await FaultAsync(BridgeReason.FirmwareDisconnected, "The mount is not connected.").ConfigureAwait(false);
+                return;
+            }
+
+            var id = await EnsureIdentityAsync(force: false).ConfigureAwait(false);
+            if (id == null || !id.IsOpenAstro) {
+                await FaultAsync(BridgeReason.ControllerFault, NotOatMessage(id)).ConfigureAwait(false);
                 return;
             }
 
@@ -654,6 +673,9 @@ namespace OatAutoPA.Core {
                 wasHandedOver = handedOver;
                 isFaulted = faulted;
             }
+            if (!mount.IsConnected) {
+                lock (gate) { identity = null; } // a mount connected later is identified afresh
+            }
             if (!active) { return; }
 
             if (wasHandedOver && !isFaulted && !mount.IsConnected) {
@@ -666,11 +688,23 @@ namespace OatAutoPA.Core {
         private async Task ReportReadinessAsync(bool force) {
             if (Interlocked.Exchange(ref readinessBusy, 1) == 1 && !force) { return; }
             try {
-                var connected = mount.IsConnected;
+                var linked = mount.IsConnected;
+                var connected = false;
                 var ready = false;
-                if (connected) {
-                    var motion = await mount.GetMotionAsync(lifetime.Token).ConfigureAwait(false);
-                    ready = motion != null && !motion.Value.AnyRunning;
+                string note;
+                if (!linked) {
+                    note = "Mount not connected";
+                } else {
+                    // Only an OAT/OAM counts as connected hardware: anything else and TPPA does not start the step.
+                    var id = await EnsureIdentityAsync(force).ConfigureAwait(false);
+                    if (id == null || !id.IsOpenAstro) {
+                        note = NotOatMessage(id);
+                    } else {
+                        connected = true;
+                        var motion = await mount.GetMotionAsync(lifetime.Token).ConfigureAwait(false);
+                        ready = motion != null && !motion.Value.AnyRunning;
+                        note = ready ? "AZ/ALT idle" : "AZ/ALT moving";
+                    }
                 }
 
                 bool changed;
@@ -687,7 +721,7 @@ namespace OatAutoPA.Core {
                         HardwareConnected = connected,
                         HardwareReady = ready,
                         LinkPath = "ASCOM telescope (N.I.N.A.)",
-                        Note = connected ? (ready ? "AZ/ALT idle" : "AZ/ALT moving") : "Mount not connected"
+                        Note = note
                     }).ConfigureAwait(false);
                 }
             } catch (OperationCanceledException) {
@@ -697,6 +731,54 @@ namespace OatAutoPA.Core {
                 Interlocked.Exchange(ref readinessBusy, 0);
             }
         }
+
+        // ------------------------------------------------------------------ mount identity
+
+        /// <summary>
+        /// Identifies the mount once per connection and session. A rejected mount is asked again after a short
+        /// interval (a one-off serial hiccup must not lock the user out) or when <paramref name="force"/> is set.
+        /// </summary>
+        private async Task<MountIdentity> EnsureIdentityAsync(bool force) {
+            lock (gate) {
+                if (identity != null && (identity.IsOpenAstro
+                                         || (!force && DateTime.UtcNow - identityCheckedUtc < TimeSpan.FromMilliseconds(Settings().IdentityRecheckMs)))) {
+                    return identity;
+                }
+            }
+
+            MountIdentity id;
+            try {
+                id = await mount.IdentifyAsync(lifetime.Token).ConfigureAwait(false) ?? new MountIdentity();
+            } catch (OperationCanceledException) {
+                throw;
+            } catch (Exception ex) {
+                log.Warning($"[OAT] Could not identify the mount: {ex.Message}");
+                id = new MountIdentity();
+            }
+
+            bool reportRejection, firstAccept;
+            lock (gate) {
+                firstAccept = id.IsOpenAstro && (identity == null || !identity.IsOpenAstro);
+                identity = id;
+                identityCheckedUtc = DateTime.UtcNow;
+                reportRejection = !id.IsOpenAstro && !identityRejectionReported;
+                if (reportRejection) { identityRejectionReported = true; }
+                if (id.IsOpenAstro) { identityRejectionReported = false; }
+            }
+
+            if (firstAccept) {
+                log.Info($"[OAT] Mount identified: {id.Describe()}.");
+            } else if (reportRejection) {
+                // Error level: the N.I.N.A. glue also shows it as a notification, since TPPA will not start.
+                log.Error(NotOatMessage(id));
+                SetStatus("Connected mount is not an OpenAstroTracker / OpenAstroMount");
+            }
+            return id;
+        }
+
+        private static string NotOatMessage(MountIdentity id) =>
+            $"The connected mount is not an OpenAstroTracker / OpenAstroMount ({id?.Describe() ?? "not identified"}). " +
+            "Connect the OAT/OAM through the OpenAstroTracker ASCOM driver in N.I.N.A.'s Telescope panel.";
 
         // ------------------------------------------------------------------ publishing
 

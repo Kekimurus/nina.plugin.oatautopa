@@ -64,6 +64,42 @@ namespace OatAutoPA.Nina {
             }
         }
 
+        public async Task<MountIdentity> IdentifyAsync(CancellationToken token) {
+            string driver = null;
+            try {
+                var info = telescope.GetInfo();
+                // e.g. "OpenAstroTracker Telescope (ASCOM.OpenAstroTracker.Telescope)"
+                driver = string.IsNullOrWhiteSpace(info?.DeviceId) || info.DeviceId == info.Name
+                    ? info?.Name
+                    : $"{info.Name} ({info.DeviceId})";
+            } catch {
+            }
+
+            await serial.WaitAsync(token).ConfigureAwait(false);
+            try {
+                var product = await QueryAsync(":GVP#,#", token).ConfigureAwait(false);
+                var version = product == null ? null : await QueryAsync(":GVN#,#", token).ConfigureAwait(false);
+                return new MountIdentity { ProductName = product, FirmwareVersion = version, DriverName = driver };
+            } finally {
+                serial.Release();
+            }
+        }
+
+        /// <summary>
+        /// One query; any failure (a driver without CommandString, a mount that does not understand the
+        /// command, the OAT driver's "255" error marker) reads as no answer.
+        /// </summary>
+        private async Task<string> QueryAsync(string command, CancellationToken token) {
+            try {
+                var reply = await Task.Run(() => telescope.SendCommandString(command, true), token).ConfigureAwait(false);
+                return MountIdentity.CleanReply(reply);
+            } catch (OperationCanceledException) {
+                throw;
+            } catch {
+                return null;
+            }
+        }
+
         private async Task BlindAsync(string command, CancellationToken token) {
             await serial.WaitAsync(token).ConfigureAwait(false);
             try {

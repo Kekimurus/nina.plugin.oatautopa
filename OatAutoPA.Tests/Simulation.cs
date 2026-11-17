@@ -88,6 +88,22 @@ namespace OatAutoPA.Tests {
             }
         }
 
+        /// <summary>What <c>:GVP#</c> answers; null = the driver rejects the command.</summary>
+        public string ProductName { get; set; } = "OpenAstroMount";
+        /// <summary>Number of identification calls that fail before answers come through (serial hiccup).</summary>
+        public int FailIdentifications { get; set; }
+        public int IdentifyCalls;
+
+        public Task<MountIdentity> IdentifyAsync(CancellationToken token) {
+            Interlocked.Increment(ref IdentifyCalls);
+            if (FailIdentifications > 0) {
+                FailIdentifications--;
+                return Task.FromResult(new MountIdentity { DriverName = "Sim driver" });
+            }
+            var product = ProductName == null ? null : MountIdentity.CleanReply(ProductName + "#");
+            return Task.FromResult(new MountIdentity { ProductName = product, FirmwareVersion = product == null ? null : "V1.13.14", DriverName = "Sim driver" });
+        }
+
         public Task StopAzAltAsync() {
             lock (gate) {
                 Stops++;

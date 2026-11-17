@@ -88,6 +88,9 @@ namespace OatAutoPA.Core {
         public int GrantTimeoutMs { get; set; } = 5000;
         public int DefaultKeepAliveMs { get; set; } = 2000;
 
+        /// <summary>How soon a mount that failed identification is asked again.</summary>
+        public int IdentityRecheckMs { get; set; } = 10000;
+
         public ControllerSettings Clone() => (ControllerSettings)MemberwiseClone();
     }
 }

@@ -76,6 +76,29 @@ namespace OatAutoPA.Tests {
         }
     }
 
+    public static class IdentityTests {
+        [Test]
+        public static void AcceptsOatAndOamProductNames() {
+            Assert.True(new MountIdentity { ProductName = MountIdentity.CleanReply("OpenAstroMount#") }.IsOpenAstro, "OAM");
+            Assert.True(new MountIdentity { ProductName = MountIdentity.CleanReply("OpenAstroTracker#") }.IsOpenAstro, "OAT");
+        }
+
+        [Test]
+        public static void RejectsOtherMountsAndNoise() {
+            Assert.True(!new MountIdentity { ProductName = MountIdentity.CleanReply("Autostar#") }.IsOpenAstro, "LX200-type mount");
+            Assert.True(MountIdentity.CleanReply("255") == null, "OAT driver error marker");
+            Assert.True(MountIdentity.CleanReply("#") == null && MountIdentity.CleanReply(null) == null, "empty");
+            Assert.True(MountIdentity.CleanReply("\u0006\u0015") == null, "control characters");
+            Assert.True(!new MountIdentity().IsOpenAstro, "no answer");
+        }
+
+        [Test]
+        public static void DescribesForMessages() {
+            var text = new MountIdentity { ProductName = "Autostar", DriverName = "EQMOD HEQ5/6" }.Describe();
+            Assert.True(text.Contains("'Autostar'") && text.Contains("EQMOD HEQ5/6"), text);
+        }
+    }
+
     public static class ContractTests {
         [Test]
         public static void ReadsNewtonsoftShapedEnvelope() {
@@ -349,6 +372,48 @@ namespace OatAutoPA.Tests {
             var state = rig.Controller.Azimuth.ResponseState;
             Assert.True(state != TrustState.Trusted || rig.Controller.Azimuth.EffectiveResponse(rig.Settings) > 0.4,
                         "slipping AZ must not end up trusted with a wild value: " + rig.Controller.DescribeCalibration());
+        }
+
+        [Test]
+        public static async Task NonOatMountIsReportedNotConnected() {
+            using var rig = new Rig(r => r.Mount.ProductName = "Autostar");
+            var achieved = await rig.Tppa.RunAsync();
+            Assert.True(!achieved && rig.Tppa.EndReason == "NoControllerReady", "TPPA must not start, got " + rig.Tppa.EndReason);
+            var ready = rig.Broker.Sent.Where(e => e.Kind == BridgeKind.ControllerReady).Select(e => e.PayloadAs<BridgeControllerReadyPayload>()).ToList();
+            Assert.True(ready.Count > 0 && ready.All(r => r.HardwareConnected == false), "hardware must read as not connected");
+            Assert.True(ready[0].Note.Contains("not an OpenAstroTracker") && ready[0].Note.Contains("Autostar"), ready[0].Note);
+            Assert.True(rig.Mount.AzCommands.Count == 0 && rig.Mount.AltCommands.Count == 0, "must not move");
+            Assert.True(rig.Log.Lines.Count(l => l.StartsWith("ERR") && l.Contains("not an OpenAstroTracker")) == 1, "one notification, not one per tick");
+        }
+
+        [Test]
+        public static async Task DriverRejectingCommandsIsRefused() {
+            using var rig = new Rig(r => r.Mount.ProductName = null);
+            Assert.True(!await rig.Tppa.RunAsync() && rig.Tppa.EndReason == "NoControllerReady", "got " + rig.Tppa.EndReason);
+        }
+
+        [Test]
+        public static async Task RecoversFromAFailedIdentification() {
+            using var rig = new Rig(r => { r.Mount.FailIdentifications = 1; r.Settings.IdentityRecheckMs = 300; });
+            var achieved = await rig.Tppa.RunAsync();
+            Assert.True(achieved, "a one-off failure must not lock the user out, got " + rig.Tppa.EndReason);
+            Assert.True(rig.Mount.IdentifyCalls >= 2, "asked again");
+        }
+
+        [Test]
+        public static async Task IdentifiesAgainAfterReconnect() {
+            using var rig = new Rig(r => r.Mount.ProductName = "Autostar");
+            var tppa = rig.Tppa;
+            tppa.Send(BridgeKind.SessionState, tppa.SessionId, new BridgeSessionStatePayload { State = BridgeState.Preparing });
+            await WaitFor(() => rig.Broker.Sent.Any(e => e.Kind == BridgeKind.ControllerReady), "first readiness");
+            Assert.True(!tppa.ReadyReported, "other mount refused");
+            // User connects the right mount: N.I.N.A. shows disconnected, then connected again.
+            rig.Mount.IsConnected = false;
+            await Task.Delay(1300);
+            rig.Mount.ProductName = "OpenAstroMount";
+            rig.Mount.IsConnected = true;
+            await WaitFor(() => tppa.ReadyReported, "readiness after reconnecting an OAM", 4000);
+            Assert.True(rig.Controller.MountIdentity?.IsOpenAstro == true, "identity updated");
         }
 
         [Test]
