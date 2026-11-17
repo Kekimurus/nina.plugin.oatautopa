@@ -443,7 +443,8 @@ namespace OatAutoPA.Core {
 
             using (StartKeepAlive(grant.WindowId)) {
                 try {
-                    SetStatus($"Moving AZ {F(azMove?.MountArcMin ?? 0)}' ALT {F(altMove?.MountArcMin ?? 0)}'");
+                    SetStatus($"Moving AZ {F(azMove?.MountArcMin ?? 0)}' ALT {F(altMove?.MountArcMin ?? 0)}'" +
+                              (azMove?.PreloadReturnArcMin > 0 || altMove?.PreloadReturnArcMin > 0 ? " (with preload)" : ""));
                     await ExecuteAsync(azMove, altMove, settings, cts.Token).ConfigureAwait(false);
                     Azimuth.Commit(azMove);
                     Altitude.Commit(altMove);
@@ -543,10 +544,23 @@ namespace OatAutoPA.Core {
 
         private async Task ExecuteAsync(AxisMove az, AxisMove alt, ControllerSettings settings, CancellationToken token) {
             token.ThrowIfCancellationRequested();
-            if (az != null) { await mount.MoveAzimuthAsync(az.MountArcMin, token).ConfigureAwait(false); }
-            if (alt != null) { await mount.MoveAltitudeAsync(alt.MountArcMin, token).ConfigureAwait(false); }
-
             var deadline = DateTime.UtcNow.AddSeconds(settings.MoveTimeoutSeconds);
+
+            // Leg 1: the net move, overshooting by the preload on a negative move. Both axes run together.
+            if (az != null) { await mount.MoveAzimuthAsync(az.FirstLegArcMin, token).ConfigureAwait(false); }
+            if (alt != null) { await mount.MoveAltitudeAsync(alt.FirstLegArcMin, token).ConfigureAwait(false); }
+            await WaitForIdleAsync(settings, deadline, token).ConfigureAwait(false);
+
+            // Leg 2 (preload only): come back positive so the gears finish on the preloaded side.
+            var azReturn = az?.PreloadReturnArcMin ?? 0;
+            var altReturn = alt?.PreloadReturnArcMin ?? 0;
+            if (azReturn <= 0 && altReturn <= 0) { return; }
+            if (azReturn > 0) { await mount.MoveAzimuthAsync(azReturn, token).ConfigureAwait(false); }
+            if (altReturn > 0) { await mount.MoveAltitudeAsync(altReturn, token).ConfigureAwait(false); }
+            await WaitForIdleAsync(settings, deadline, token).ConfigureAwait(false);
+        }
+
+        private async Task WaitForIdleAsync(ControllerSettings settings, DateTime deadline, CancellationToken token) {
             var failedReads = 0;
             while (true) {
                 await Task.Delay(settings.MotionPollIntervalMs, token).ConfigureAwait(false);

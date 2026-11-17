@@ -109,7 +109,51 @@ namespace OatAutoPA.Tests {
     }
 
     public static class CalibratorTests {
-        private static readonly ControllerSettings S = new ControllerSettings { Gain = 1.0, UseBacklashCompensation = true };
+        private static readonly ControllerSettings S = new ControllerSettings { Gain = 1.0, UseBacklashCompensation = true, BacklashStrategy = BacklashStrategy.Learned };
+        private static readonly ControllerSettings P = new ControllerSettings { Gain = 1.0, BacklashStrategy = BacklashStrategy.Preload, PreloadAzimuthArcMin = 5 };
+
+        /// <summary>Executes a plan leg by leg, like the controller does, on a toy axis with play.</summary>
+        private static double ApplyLegs(AxisMove move, double error, double response, double backlash, ref int lastDir) {
+            foreach (var leg in new[] { move.FirstLegArcMin, move.PreloadReturnArcMin }) {
+                if (leg == 0) { continue; }
+                var dir = Math.Sign(leg);
+                var size = Math.Abs(leg);
+                if (lastDir != 0 && dir != lastDir) { size = Math.Max(0, size - backlash); }
+                lastDir = dir;
+                error -= dir * size * response;
+            }
+            return error;
+        }
+
+        [Test]
+        public static void PreloadOvershootsNegativeMovesOnly() {
+            var cal = new AxisCalibrator(Axis.Azimuth);
+            var neg = cal.Plan(-4, 1, P);
+            Assert.True(neg.PreloadReturnArcMin == 5 && neg.FirstLegArcMin == -9 && neg.MountArcMin == -4, "negative: -9 then +5");
+            var pos = cal.Plan(4, 1, P);
+            Assert.True(pos.PreloadReturnArcMin == 0 && pos.FirstLegArcMin == 4, "positive: single leg");
+            var flipped = cal.Plan(4, -1, P);
+            Assert.True(flipped.PreloadReturnArcMin == 5 && flipped.FirstLegArcMin == -9, "preload follows the firmware sign, not the error sign");
+            Assert.True(cal.EffectiveBacklash(P) == 0, "no learned compensation with a preload");
+        }
+
+        [Test]
+        public static void PreloadMakesEveryMoveACleanResponseSample() {
+            var cal = new AxisCalibrator(Axis.Azimuth);
+            var lastDir = 0;
+            // Alternating errors: with Learned these would all be reversals; with a preload they all learn.
+            var error = 8.0;
+            foreach (var next in new[] { -6.0, 5.0, -7.0, 6.0, -5.0 }) {
+                var move = cal.Plan(error, 1, P);
+                var after = ApplyLegs(move, error, 0.8, 2.0, ref lastDir);
+                var outcome = cal.Learn(move, error, after, P, out _);
+                cal.Commit(move);
+                error = next;
+            }
+            Assert.True(cal.ResponseState == TrustState.Trusted, "response trusted despite reversals: " + cal.Describe(P));
+            Assert.Near(0.8, cal.EffectiveResponse(P), 0.01, "response measured exactly through 2' of play");
+            Assert.True(cal.Plan(-3, 1, P).Kind == MoveKind.SameDirection, "preloaded moves count as same-direction");
+        }
 
         /// <summary>Executes a plan on a toy axis: error -= response * (|sent| - play on reversal).</summary>
         private static double Apply(AxisMove move, double error, double response, double backlash, ref int lastDir) {
@@ -244,12 +288,42 @@ namespace OatAutoPA.Tests {
 
         [Test]
         public static async Task LearnsGearRatioDuringTheRun() {
-            using var rig = new Rig(r => { r.Mount.AzError = 60; r.Mount.AltError = 45; r.Settings.MaxMoveArcMin = 15; r.Settings.Gain = 0.6; });
+            using var rig = new Rig(r => { r.Mount.AzError = 60; r.Mount.AltError = 45; r.Settings.MaxMoveArcMin = 15; r.Settings.Gain = 0.6; r.Settings.BacklashStrategy = BacklashStrategy.Learned; });
             await rig.Tppa.RunAsync();
             Assert.True(rig.Controller.Azimuth.ResponseState == TrustState.Trusted, "AZ response should be trusted: " + rig.Controller.DescribeCalibration());
             Assert.Near(0.75, rig.Controller.Azimuth.EffectiveResponse(rig.Settings), 0.08, "AZ response");
             Assert.Near(1.2, rig.Controller.Altitude.EffectiveResponse(rig.Settings), 0.12, "ALT response");
             Assert.True(rig.Store.Saved.ContainsKey(Axis.Azimuth) && rig.Store.Saved[Axis.Azimuth].Response != null, "trusted values are persisted");
+        }
+
+        [Test]
+        public static async Task PreloadConvergesThroughBacklashAndOvershoot() {
+            // Gain above 1 makes it overshoot, so the axes reverse: the case backlash hurts most.
+            using var rig = new Rig(r => {
+                r.Mount.AzError = 25; r.Mount.AltError = -18; r.Mount.AzBacklash = 3; r.Mount.AltBacklash = 2;
+                r.Settings.Gain = 1.0; r.Settings.BacklashStrategy = BacklashStrategy.Preload;
+            });
+            var achieved = await rig.Tppa.RunAsync();
+            Assert.True(achieved, $"should converge, ended {rig.Tppa.EndReason}, AZ {rig.Mount.AzError:F2}' ALT {rig.Mount.AltError:F2}'");
+            Assert.True(rig.Tppa.MeasurementsWhileMoving == 0, "no frame during either leg");
+            // Every negative firmware command must be followed by a positive return of the preload.
+            var alt = rig.Mount.AltCommands;
+            for (var i = 0; i < alt.Count; i++) {
+                if (alt[i] < 0) { Assert.True(i + 1 < alt.Count && Math.Abs(alt[i + 1] - 5) < 1e-9, $"ALT command {i} ({alt[i]:F2}) not followed by the +5' return"); }
+            }
+            Assert.True(alt.Any(c => c < 0), "the test should exercise a negative ALT move");
+        }
+
+        [Test]
+        public static async Task PreloadLearnsResponseFromBothDirections() {
+            using var rig = new Rig(r => {
+                r.Mount.AzError = 40; r.Mount.AltError = -40; r.Mount.AzBacklash = 2; r.Mount.AltBacklash = 2;
+                r.Settings.MaxMoveArcMin = 10; r.Settings.Gain = 0.6; r.Settings.BacklashStrategy = BacklashStrategy.Preload;
+            });
+            await rig.Tppa.RunAsync();
+            // ALT only ever moves negative here: with Learned the first move's unknown play would be all it sees.
+            Assert.Near(1.2, rig.Controller.Altitude.EffectiveResponse(rig.Settings), 0.1, "ALT response through the preload");
+            Assert.Near(0.75, rig.Controller.Azimuth.EffectiveResponse(rig.Settings), 0.08, "AZ response");
         }
 
         [Test]

@@ -80,6 +80,22 @@ namespace OatAutoPA {
         public bool InvertAltitude { get => GetBool(false); set => SetBool(value); }
         public bool AutoDetectDirection { get => GetBool(true); set => SetBool(value); }
         public bool UseLearnedResponse { get => GetBool(true); set => SetBool(value); }
+        public BacklashStrategy BacklashStrategy {
+            get => options.GetValueEnum(nameof(BacklashStrategy), BacklashStrategy.Preload);
+            set {
+                options.SetValueEnum(nameof(BacklashStrategy), value);
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(IsPreload));
+                RaisePropertyChanged(nameof(IsLearned));
+                RaisePropertyChanged(nameof(CalibrationSummary));
+            }
+        }
+
+        public BacklashStrategy[] BacklashStrategies { get; } = (BacklashStrategy[])Enum.GetValues(typeof(BacklashStrategy));
+        public bool IsPreload => BacklashStrategy == BacklashStrategy.Preload;
+        public bool IsLearned => BacklashStrategy == BacklashStrategy.Learned;
+        public double PreloadAzimuthArcMin { get => GetDouble(5); set => SetDouble(Math.Clamp(value, 0, 60)); }
+        public double PreloadAltitudeArcMin { get => GetDouble(5); set => SetDouble(Math.Clamp(value, 0, 60)); }
         public bool UseBacklashCompensation { get => GetBool(true); set => SetBool(value); }
         public bool PersistCalibration { get => GetBool(true); set => SetBool(value); }
         public double MaxResponseScatter { get => GetDouble(0.25); set => SetDouble(Math.Clamp(value, 0.05, 1.0)); }
@@ -96,6 +112,9 @@ namespace OatAutoPA {
             InvertAltitude = InvertAltitude,
             AutoDetectDirection = AutoDetectDirection,
             UseLearnedResponse = UseLearnedResponse,
+            BacklashStrategy = BacklashStrategy,
+            PreloadAzimuthArcMin = PreloadAzimuthArcMin,
+            PreloadAltitudeArcMin = PreloadAltitudeArcMin,
             UseBacklashCompensation = UseBacklashCompensation,
             PersistCalibration = PersistCalibration,
             MaxResponseScatter = MaxResponseScatter,

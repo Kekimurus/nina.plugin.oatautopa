@@ -79,7 +79,21 @@
                 <TextBlock Text="Correct moves with the learned gear response" />
                 <CheckBox IsChecked="{Binding UseLearnedResponse}" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal">
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <TextBlock Text="Backlash strategy" />
+                <ComboBox MinWidth="120" ItemsSource="{Binding BacklashStrategies}" SelectedItem="{Binding BacklashStrategy}" />
+            </StackPanel>
+            <TextBlock TextWrapping="Wrap" MaxWidth="700" Margin="0,0,0,4" Opacity="0.7"
+                       Text="Preload: negative moves overshoot and come back, so the gears always finish turning positive. Set the preload at least as large as the real backlash. Learned: backlash is measured on reversals and added to them." />
+            <StackPanel Orientation="Horizontal" IsEnabled="{Binding IsPreload}">
+                <TextBlock Text="Azimuth preload (arcmin)" />
+                <TextBox Text="{Binding PreloadAzimuthArcMin}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" IsEnabled="{Binding IsPreload}">
+                <TextBlock Text="Altitude preload (arcmin)" />
+                <TextBox Text="{Binding PreloadAltitudeArcMin}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" IsEnabled="{Binding IsLearned}">
                 <TextBlock Text="Compensate learned backlash on reversals" />
                 <CheckBox IsChecked="{Binding UseBacklashCompensation}" />
             </StackPanel>

@@ -31,8 +31,16 @@ There are no dedicated calibration frames. Each correction doubles as a calibrat
 - **Gear response:** the measured error change divided by the commanded arcminutes, on moves that keep the
   direction. Once two or more samples agree, moves are scaled by it (it effectively corrects the firmware's
   steps/degree).
-- **Backlash:** after a direction reversal, the travel that went missing compared with the response.
-  Once trusted, it is added to every reversal.
+- **Backlash**, handled by one of two strategies (option *Backlash strategy*):
+  - **Preload** (default): every negative move overshoots by the preload and comes back positive, so the
+    gears always finish turning the same way. No backlash value needs to be known, only a preload at
+    least as large as the real play (default 5′ per axis). It is the same idea as TPPA's own
+    `BacklashCompensationPlanner`, but the overshoot is folded into the move, so it takes two motor
+    commands instead of three. Each correction then behaves like a same-direction move, which also makes
+    every move a clean response sample.
+  - **Learned**: backlash is measured after each direction reversal, as the travel that went missing
+    compared with the response. Once trusted, it is added to every reversal. No extra motion, but it
+    needs a trusted response first and real reversals to learn from.
 - **Slippage guard:** if the response samples scatter more than the configured limit (default 25 %), the
   axis is marked *unreliable*. The plugin then falls back to plain, uncompensated moves instead of applying
   numbers it can't trust.
@@ -69,7 +77,9 @@ flips it. You can also set the invert options yourself.
 | Manual adjustment above | 120′ | The run stops with a message above this. |
 | Settle time | 1.5 s | TPPA waits this long after a move before exposing. |
 | Invert azimuth / altitude | off | Altitude is also flipped automatically in the southern hemisphere. |
-| Learned response / backlash / remember | on | See *Calibration* above. |
+| Backlash strategy | Preload | *Preload* or *Learned*, see *Calibration* above. |
+| Azimuth / altitude preload | 5′ | Preload only. Must be at least the real backlash. The overshoot leg can exceed *Maximum move* by this much. |
+| Learned response / backlash / remember | on | See *Calibration* above. The backlash option applies to *Learned* only. |
 | Max response scatter | 0.25 | Above this the axis is treated as slipping. |
 
 ## Known limitations

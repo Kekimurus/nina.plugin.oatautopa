@@ -36,8 +36,18 @@ namespace OatAutoPA.Core {
         /// </summary>
         public double Sent { get; init; }
 
-        /// <summary>Value sent to the firmware (<see cref="Sent"/> with the axis direction applied).</summary>
+        /// <summary>Net firmware move (<see cref="Sent"/> with the axis direction applied).</summary>
         public double MountArcMin { get; init; }
+
+        /// <summary>
+        /// Preload strategy: positive return leg after a negative move, in firmware arcminutes (0 = none).
+        /// The move is executed as <see cref="FirstLegArcMin"/> followed by this, so the gears always finish
+        /// turning positive and the net move is still <see cref="MountArcMin"/>.
+        /// </summary>
+        public double PreloadReturnArcMin { get; init; }
+
+        /// <summary>First command sent to the firmware: the net move, overshooting by the preload if any.</summary>
+        public double FirstLegArcMin => MountArcMin - PreloadReturnArcMin;
 
         public MoveKind Kind { get; init; }
         public double ResponseUsed { get; init; }
@@ -63,6 +73,9 @@ namespace OatAutoPA.Core {
     ///
     /// Model, in error arcminutes, for a move that sends <c>s</c> and changes the error by <c>d</c> in
     /// the intended direction: same direction <c>d = r * |s|</c>; after a reversal <c>d = r * (|s| - b)</c>.
+    /// With the preload strategy every move ends turning positive, so the play is always taken up on the
+    /// same side and every move after the first behaves like a same-direction move: <c>d = r * |s|</c>
+    /// even across sign changes, provided the preload is at least the real backlash.
     /// Numbers are only applied once they repeat; samples that scatter mark the axis unreliable (slippage)
     /// and the controller falls back to plain, uncompensated moves.
     /// </summary>
@@ -127,7 +140,7 @@ namespace OatAutoPA.Core {
         /// <summary>The backlash added on reversals (0 unless trusted and the response is not unreliable).</summary>
         public double EffectiveBacklash(ControllerSettings settings) {
             lock (gate) {
-                if (!settings.UseBacklashCompensation) { return 0; }
+                if (!settings.UseBacklashCompensation || UsesPreload(settings)) { return 0; }
                 if (EvaluateResponse(out _) == TrustState.Unreliable) { return 0; }
                 return EvaluateBacklash(settings, out var median) == TrustState.Trusted ? median : 0;
             }
@@ -144,15 +157,18 @@ namespace OatAutoPA.Core {
             var response = EffectiveResponse(settings);
             var baseMove = desired / response;
             var mountSign = Math.Sign(baseMove) * directionSign;
+            var preload = UsesPreload(settings);
 
             MoveKind kind;
             lock (gate) {
+                // With a preload the gears always finish turning positive, so once one move has been made the
+                // play is taken up on the same side before every move: each one behaves like a same-direction move.
                 kind = LastMountSign == null ? MoveKind.Unknown
-                     : LastMountSign == mountSign ? MoveKind.SameDirection
+                     : preload || LastMountSign == mountSign ? MoveKind.SameDirection
                      : MoveKind.Reversal;
             }
 
-            var backlash = kind == MoveKind.Reversal ? EffectiveBacklash(settings) : 0;
+            var backlash = !preload && kind == MoveKind.Reversal ? EffectiveBacklash(settings) : 0;
             var sent = baseMove + Math.Sign(baseMove) * backlash;
 
             var capped = false;
@@ -161,11 +177,13 @@ namespace OatAutoPA.Core {
                 capped = true;
             }
 
+            var mountArcMin = sent * directionSign;
             return new AxisMove {
                 Axis = Axis,
                 Desired = desired,
                 Sent = sent,
-                MountArcMin = sent * directionSign,
+                MountArcMin = mountArcMin,
+                PreloadReturnArcMin = preload && mountArcMin < 0 ? settings.PreloadFor(Axis) : 0,
                 Kind = kind,
                 ResponseUsed = response,
                 BacklashApplied = backlash,
@@ -176,7 +194,7 @@ namespace OatAutoPA.Core {
         /// <summary>Records that a planned move was executed to the end.</summary>
         public void Commit(AxisMove move) {
             if (move == null || move.MountSign == 0) { return; }
-            lock (gate) { LastMountSign = move.MountSign; }
+            lock (gate) { LastMountSign = move.PreloadReturnArcMin > 0 ? 1 : move.MountSign; }
         }
 
         /// <summary>
@@ -252,10 +270,15 @@ namespace OatAutoPA.Core {
                 var rs = EvaluateResponse(out var mean);
                 var bs = EvaluateBacklash(settings, out var median);
                 var response = rs == TrustState.Trusted ? $"response {Fmt(mean, 3)}" : $"response {rs.ToString().ToLowerInvariant()} ({responseSamples.Count} samples)";
-                var backlash = bs == TrustState.Trusted ? $"backlash {Fmt(median)}'" : $"backlash {bs.ToString().ToLowerInvariant()} ({backlashSamples.Count} samples)";
+                var backlash = UsesPreload(settings) ? $"preload {Fmt(settings.PreloadFor(Axis))}'"
+                             : bs == TrustState.Trusted ? $"backlash {Fmt(median)}'"
+                             : $"backlash {bs.ToString().ToLowerInvariant()} ({backlashSamples.Count} samples)";
                 return $"{Axis}: {response}, {backlash}";
             }
         }
+
+        private bool UsesPreload(ControllerSettings settings) =>
+            settings.BacklashStrategy == BacklashStrategy.Preload && settings.PreloadFor(Axis) > 0;
 
         private TrustState EvaluateResponse(out double mean) {
             mean = 1.0;

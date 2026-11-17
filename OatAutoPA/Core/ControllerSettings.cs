@@ -2,6 +2,20 @@
 
 namespace OatAutoPA.Core {
 
+    /// <summary>How gear backlash is handled.</summary>
+    public enum BacklashStrategy {
+        /// <summary>
+        /// Every move ends turning in the positive (firmware) direction: a negative move overshoots by the
+        /// preload and comes back. The play is always taken up on the same side, so no backlash value has to
+        /// be known (only a preload at least as large). Same idea as TPPA's BacklashCompensationPlanner.
+        /// </summary>
+        Preload,
+
+        /// <summary>Backlash is learned from reversals during the run and added to reversal moves.</summary>
+        Learned
+    }
+
+
     /// <summary>
     /// User-tunable behaviour. The controller reads a fresh copy for every measurement, so changes in
     /// the options page apply to the next correction.
@@ -34,8 +48,18 @@ namespace OatAutoPA.Core {
         /// <summary>Use the learned response (gear-ratio correction) to size moves.</summary>
         public bool UseLearnedResponse { get; set; } = true;
 
-        /// <summary>Add the learned backlash when an axis reverses.</summary>
+        public BacklashStrategy BacklashStrategy { get; set; } = BacklashStrategy.Preload;
+
+        /// <summary>Preload overtravel for azimuth, arcminutes. Must be at least the real backlash.</summary>
+        public double PreloadAzimuthArcMin { get; set; } = 5;
+
+        /// <summary>Preload overtravel for altitude, arcminutes. Must be at least the real backlash.</summary>
+        public double PreloadAltitudeArcMin { get; set; } = 5;
+
+        /// <summary>Learned strategy only: add the learned backlash when an axis reverses.</summary>
         public bool UseBacklashCompensation { get; set; } = true;
+
+        public double PreloadFor(Axis axis) => axis == Axis.Azimuth ? PreloadAzimuthArcMin : PreloadAltitudeArcMin;
 
         /// <summary>Remember trusted calibration between sessions.</summary>
         public bool PersistCalibration { get; set; } = true;
