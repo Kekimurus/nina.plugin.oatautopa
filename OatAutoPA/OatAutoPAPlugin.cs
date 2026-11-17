@@ -1,6 +1,5 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 
-using CommunityToolkit.Mvvm.Input;
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Equipment.Interfaces.Mediator;
@@ -50,7 +49,7 @@ namespace OatAutoPA {
                 RaisePropertyChanged(nameof(ControllerStatus));
                 RaisePropertyChanged(nameof(CalibrationSummary));
             };
-            ResetCalibrationCommand = new RelayCommand(() => {
+            ResetCalibrationCommand = new CommunityToolkit.Mvvm.Input.RelayCommand(() => {
                 controller.ResetCalibration();
                 RaisePropertyChanged(nameof(CalibrationSummary));
             });
