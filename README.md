@@ -1,5 +1,7 @@
 # OAT AutoPA – N.I.N.A. plugin
 
+[![Build](https://github.com/Kekimurus/nina.plugin.oatautopa/actions/workflows/build.yml/badge.svg)](https://github.com/Kekimurus/nina.plugin.oatautopa/actions/workflows/build.yml)
+
 Automatic polar alignment for the **OpenAstroTracker / OpenAstroMount** AZ/ALT motors, driven by
 **Three Point Polar Alignment (TPPA)**.
 
@@ -98,6 +100,17 @@ flips it. You can also set the invert options yourself.
 dotnet build OatAutoPA/OatAutoPA.csproj          # Windows: copies the DLL into %localappdata%\NINA\Plugins\3.0.0
 dotnet run --project OatAutoPA.Tests             # any OS, no NuGet packages needed
 ```
+
+CI (`.github/workflows/build.yml`) runs the tests and builds the plugin on Windows for every push and pull
+request, and uploads the zipped DLL as a build artifact. To publish a release, bump the version in
+`OatAutoPA/Properties/AssemblyInfo.cs`, then tag and push:
+
+```
+git tag v0.1.0.0
+git push origin v0.1.0.0
+```
+
+The workflow then attaches `OatAutoPA-v0.1.0.0.zip` to a GitHub release.
 
 The tests run the controller against a simulated TPPA (following the bridge protocol) and a simulated mount
 with a wrong gear ratio, backlash, optional slippage and reversed wiring. They check convergence, learning,
