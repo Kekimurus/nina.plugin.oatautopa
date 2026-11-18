@@ -72,6 +72,7 @@ Moves smaller than 1.5′ (configurable) are not used for learning, because meas
    alignment tolerance**.
 3. Run TPPA as a **sequence instruction**. The bridge only runs there, not in the dockable.
 4. Get within the *manual adjustment* limit (default 120′) by hand first. The plugin refuses larger errors.
+5. If using OATracker alongside N.I.N.A., make sure to disable its AutoPA functionality.
 
 The first time, watch the first two corrections. If an axis goes the wrong way, direction detection
 flips it. You can also set the invert options yourself.
