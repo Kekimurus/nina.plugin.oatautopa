@@ -69,7 +69,7 @@ Moves smaller than 1.5′ (configurable) are not used for learning, because meas
 
 1. Install the plugin and restart N.I.N.A.
 2. In TPPA's options, set **Polar Alignment System** to **External: OAT AutoPA**, set a **non-zero
-   alignment tolerance**, and leave **Do automated adjustments** off.
+   alignment tolerance**.
 3. Run TPPA as a **sequence instruction**. The bridge only runs there, not in the dockable.
 4. Get within the *manual adjustment* limit (default 120′) by hand first. The plugin refuses larger errors.
 
